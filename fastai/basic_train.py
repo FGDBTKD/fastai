@@ -12,7 +12,7 @@ default_wd = 1e-2
 def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None, opt:OptOptimizer=None,
                cb_handler:Optional[CallbackHandler]=None)->Tuple[Union[Tensor,int,float,str]]:
     "Calculate loss and metrics for a batch, call out to callbacks as necessary."
-    cb_handler = ifnone(cb_handler, CallbackHandler([], []))
+    cb_handler = ifnone(cb_handler, CallbackHandler())
     if not is_listy(xb): xb = [xb]
     if not is_listy(yb): yb = [yb]
     out = model(*xb)
@@ -32,16 +32,16 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     return loss.detach().cpu()
 
 def get_preds(model:nn.Module, dl:DataLoader, pbar:Optional[PBar]=None, cb_handler:Optional[CallbackHandler]=None,
-              activ:nn.Module=None, loss_func:OptLossFunc=None) -> List[Tensor]:
-    "Predict the output of the elements in the dataloader."
-    res = [torch.cat(o).cpu() for o in zip(*validate(model, dl, cb_handler=cb_handler, pbar=pbar, average=False))]
+              activ:nn.Module=None, loss_func:OptLossFunc=None, n_batch:Optional[int]=None) -> List[Tensor]:
+    "Tuple of predictions and targets, and optional losses (if `loss_func`) using `dl`, max batches `n_batch`."
+    res = [torch.cat(o).cpu() for o in
+           zip(*validate(model, dl, cb_handler=cb_handler, pbar=pbar, average=False, n_batch=n_batch))]
     if loss_func is not None: res.append(calc_loss(res[0], res[1], loss_func))
     if activ is not None: res[0] = activ(res[0])
     return res
 
-def validate(model:nn.Module, dl:DataLoader, loss_func:OptLossFunc=None,
-             cb_handler:Optional[CallbackHandler]=None,
-             pbar:Optional[PBar]=None, average=True)->Iterator[Tuple[Union[Tensor,int],...]]:
+def validate(model:nn.Module, dl:DataLoader, loss_func:OptLossFunc=None, cb_handler:Optional[CallbackHandler]=None,
+             pbar:Optional[PBar]=None, average=True, n_batch:Optional[int]=None)->Iterator[Tuple[Union[Tensor,int],...]]:
     "Calculate loss and metrics for the validation set."
     model.eval()
     with torch.no_grad():
@@ -52,6 +52,7 @@ def validate(model:nn.Module, dl:DataLoader, loss_func:OptLossFunc=None,
             if not is_listy(yb): yb = [yb]
             nums.append(yb[0].shape[0])
             if cb_handler and cb_handler.on_batch_end(val_losses[-1]): break
+            if n_batch and (len(nums)>=n_batch): break
         nums = np.array(nums, dtype=np.float32)
         if average: return (to_np(torch.stack(val_losses)) * nums).sum() / nums.sum()
         else:       return val_losses
@@ -187,26 +188,44 @@ class Learner():
 
     def __del__(self): del(self.model, self.data)
 
-    def save(self, name:PathOrStr):
-        "Save model with `name` to `self.model_dir`."
-        torch.save(self.model.state_dict(), self.path/self.model_dir/f'{name}.pth')
+    def save(self, name:PathOrStr, return_path:bool=False)->Union[None,str]:
+        "Save model with `name` to `self.model_dir`, and return path if `return_path`."
+        path = self.path/self.model_dir/f'{name}.pth'
+        torch.save(self.model.state_dict(), path)
+        if return_path: return path
+
+    def dl(self, ds_type:DatasetType=DatasetType.Valid):
+        "Return DataLoader for DatasetType `ds_type`."
+        return self.data.dl(ds_type)
 
     def load(self, name:PathOrStr, device:torch.device=None):
         "Load model `name` from `self.model_dir` using `device`, defaulting to `self.data.device`."
         if device is None: device = self.data.device
         self.model.load_state_dict(torch.load(self.path/self.model_dir/f'{name}.pth', map_location=device))
+        return self
 
-    def pred_batch(self, is_test:bool=False) -> Tuple[Tensors, Tensors, Tensors]:
-        "Return input, target and output of the model on a batch."
-        x,y = next(iter(self.data.holdout(is_test)))
-        if not is_listy(x): x = [x]
-        return x,y,self.model(*x).detach()
-
-    def get_preds(self, is_test:bool=False, with_loss:bool=False) -> List[Tensor]:
-        "Return predictions and targets on the valid or test set, depending on `is_test`."
+    def get_preds(self, ds_type:DatasetType=DatasetType.Valid, with_loss:bool=False, n_batch:Optional[int]=None, pbar:Optional[PBar]=None) -> List[Tensor]:
+        "Return predictions and targets on the valid, train, or test set, depending on `ds_type`."
         lf = self.loss_func if with_loss else None
-        return get_preds(self.model, self.data.holdout(is_test), cb_handler=CallbackHandler(self.callbacks, []),
-                         activ=_loss_func2activ(self.loss_func), loss_func=lf)
+        return get_preds(self.model, self.dl(ds_type), cb_handler=CallbackHandler(self.callbacks),
+                         activ=_loss_func2activ(self.loss_func), loss_func=lf, n_batch=n_batch, pbar=pbar)
+
+    def pred_batch(self, ds_type:DatasetType=DatasetType.Valid, pbar:Optional[PBar]=None) -> List[Tensor]:
+        "Return output of the model on one batch from valid, train, or test set, depending on `ds_type`."
+        dl = self.dl(ds_type)
+        nw = dl.num_workers
+        dl.num_workers = 0
+        preds,_ = self.get_preds(ds_type, with_loss=False, n_batch=1, pbar=pbar)
+        dl.num_workers = nw
+        return preds
+
+    def predict(self, img:ItemBase, pbar:Optional[PBar]=None):
+        "Return prect class, label and probabilities for `img`."
+        ds = self.data.single_dl.dataset
+        ds.set_item(img)
+        res = self.pred_batch(ds_type=DatasetType.Single, pbar=pbar)
+        ds.clear_item()
+        return ds.predict(res)
 
     def validate(self, dl=None, callbacks=None, metrics=None):
         "Validate on `dl` with potential `callbacks` and `metrics`."
@@ -217,6 +236,13 @@ class Learner():
         val_metrics = validate(self.model, dl, self.loss_func, cb_handler)
         cb_handler.on_epoch_end(val_metrics)
         return cb_handler.state_dict['last_metrics']
+
+    def show_results(self, ds_type=DatasetType.Valid, rows:int=3, **kwargs):
+        "Show `rows` result of predictions on `ds_type` dataset."
+        ds = self.dl(ds_type).dataset
+        preds = self.pred_batch(ds_type)
+        xys = [ds[i] for i in range(rows)]
+        xys[0][0].show_results(xys, preds, **kwargs)
 
 @dataclass
 class LearnerCallback(Callback):
@@ -240,6 +266,7 @@ class Recorder(LearnerCallback):
         "Initialize recording status at beginning of training."
         self.pbar = pbar
         self.names = ['epoch', 'train_loss', 'valid_loss'] + metrics_names
+        if hasattr(self, '_added_met_names'): self.names += self._added_met_names
         self.pbar.write('  '.join(self.names), table=True)
         self.losses,self.val_losses,self.lrs,self.moms,self.metrics,self.nb_batches = [],[],[],[],[],[]
 
@@ -300,15 +327,22 @@ class Recorder(LearnerCallback):
         ax.set_ylabel("Loss")
         ax.set_xlabel("Learning Rate")
         ax.set_xscale('log')
+        ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%.0e'))
 
-    def plot_losses(self)->None:
+    def plot_losses(self, last:int=None)->None:
         "Plot training and validation losses."
+        last = ifnone(last,len(self.nb_batches))
+        assert last<=len(self.nb_batches), f"We can only plot up to the last {len(self.nb_batches)} epochs. Please adapt 'last' parameter accordingly."
         _, ax = plt.subplots(1,1)
-        iterations = range_of(self.losses)
-        ax.plot(iterations, self.losses)
-        val_iter = self.nb_batches
-        val_iter = np.cumsum(val_iter)
-        ax.plot(val_iter, self.val_losses)
+        l_b = np.sum(self.nb_batches[-last:])
+        iterations = range_of(self.losses)[-l_b:]
+        ax.plot(iterations, self.losses[-l_b:], label='Train')
+        val_iter = self.nb_batches[-last:]
+        val_iter = np.cumsum(val_iter)+np.sum(self.nb_batches[:-last])
+        ax.plot(val_iter, self.val_losses[-last:], label='Validation')
+        ax.set_ylabel('Loss')
+        ax.set_xlabel('Batches processed')
+        ax.legend()
 
     def plot_metrics(self)->None:
         "Plot metrics collected during training."

@@ -1,6 +1,7 @@
 "Provides advanced training extensions to `fastai.basic_train`. Includes half-precision, learning rate finder, mixup, and one-cycle"
 from .torch_core import *
 from .callbacks import *
+from .basic_data import *
 from .basic_train import *
 
 __all__ = ['BnFreeze', 'GradientClipping', 'ShowGraph', 'fit_one_cycle', 'lr_find', 'one_cycle_scheduler', 'to_fp16', 'mixup']

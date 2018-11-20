@@ -11,16 +11,235 @@ Github. Parentheses after an item show the name or github id of the contributor
 of that change.
 
 
-## 1.0.16.dev0 (Work In Progress)
+
+
+## 1.0.29.dev0 (Work In Progress)
 
 ### New:
-
-- `ImageDataBunch.single_from_classes` to allow single image predictions
 
 ### Changed:
 
 ### Fixed:
 
+
+
+## 1.0.28 (2018-11-19)
+
+### Breaking changes:
+
+- `get_files` and `get_image_files` now return `Path`s relative to `path`, instead of relative to `.`
+- `ItemList.items` are also relative to `path` where relevant, since `get_files` is called internally
+- `create_func` is removed in the data API; subclass and change the `get` method instead (in vision, you can subclass the `open` method if you want to change how the images are opened).
+
+### New:
+
+- `Vocab` and `TabularTransform` can now be saved
+- Each application has its method to create an inference learner
+- `model_summary` function for standard models (thanks to @noklam)
+- Added `pca` to `torch.Tensor`
+- Add methods to get embeddings from `CollabLearner`
+
+### Fixed:
+
+- `verify_image` - now fixes files with corrupt EXIF data
+
+## 1.0.27 (2018-11-17)
+
+### New:
+
+- We can add transform to `y` in the data block API
+- metric fbeta for single classification (thanks to wy-q)
+
+### Changed:
+
+- ItemLists can now set `self.filter_missing_y` to automatically remove items from LabelLists  training set that can't be labeled
+- revert xxmaj token and `deal_caps` rule
+
+### Fixed:
+
+
+## 1.0.26 (2018-11-16)
+
+### New:
+
+- xxmaj token and new `deal_caps` rule
+
+### Changed:
+
+- `Tokenizer` has `pre_rules` and `post_rules` now (for before and after tokenization)
+- `mark_fields` is now default to `False`
+
+
+## 1.0.25 (2018-11-16)
+
+### New:
+
+- `FloatList` to do regression
+- Use of real neural nets in `collab`
+
+### Changed:
+
+- Remove `TextFilesList` as you can now use `TextList` instead
+- Consistent use of `cols` / `col` in the data block API depending on if you can pass multiple columns or not
+- Collab is refactored with the data block API behind the scene
+- `get_collab_learner` and `get_tabular_learner` become `collab_learner` and
+  `tabular_learner` for name harmonization accross applications
+- `get_embedding` becomes `embedding`
+- `ImageDeleter` and `ImageRelabeler` are merged into `ImageCleaner`
+
+### Fixed:
+
+- `show_batch` works with `rows=1`
+- Pretrained language models are saved in the correct folder (.fastai/models/)
+- Splitting too slow in the data block API
+- Mixup losses work with predict and TTA (thanks to bharadwaj6)
+- Wrong size for the added test set in the data block API (thanks to wdhorton)
+- Fix to the QRNN (thanks to PiotrCzapla)
+
+## 1.0.24 (2018-11-13)
+
+- No changes
+
+## 1.0.23 (2018-11-13)
+
+### New:
+
+- `Learner.predict` works accross applications
+- `Learner.show_batch` works accross applications
+
+### Changed:
+
+- `tools/build-docs` and `tools/update-nbs` scripts combined into one script.
+- Big refactor of the data block API
+
+### Fixed:
+
+- `download_images` works with different kind of suffixes (thanks to fpingham)
+
+
+## 1.0.22 (2018-11-09)
+
+### Breaking changes:
+
+- We no longer import submodule names automatically with `import *`
+- Callbacks are now inside the `callbacks` namespace if you `from fastai import *`
+
+### Changed:
+
+- All the `DataBunch` factory method use the data block API, the factory method of `Datasets` are deprecated and will be removed in a future version.
+
+### Fixed:
+
+- `learn.predict` fixed
+- wrong dimension in dice (thanks to noklam)
+
+## 1.0.21 (2018-11-08)
+
+### New:
+
+- `CSVLogger` callback (thanks to devorfu)
+- Initial support for image regression problems.
+- If a dataset class has `learner_type` then `create_cnn` uses that type to create the `Learner`.
+- Introduce TaskType in `DatasetBase` to deal with single/multi-class or regression problems accross applications.
+
+### Changed:
+
+- `datasets()` now can automatically figure out what class to use in many situations
+- `download_images()` now saves images with their original extensions
+
+
+## 1.0.20 (2018-11-07)
+
+### New:
+
+- `DataBunch.dl` replaces the various `holdout`, `is_test`, and `is_train` approaches with a single consistent enum.
+- `fastai.text` is fully compatible with the data block API.
+
+### Changed:
+
+- `download_url` reads the get request with `iter_content` which is robust to 'content-length' errors. (thanks to Francisco Ingham and Zach Caceres)
+- `download_url` has a timeout
+
+### Fixed:
+
+- `create_cnn` correctly calculates # features in body correctly for more architectures
+- `TextDataset` has now two subclasses for the preprocessing steps and doesn't do that preprocesing automatically.
+- `TextDataBunch` doesn't save the result of preprocessing automatically, you have to use `TextDataBunch.save`.
+- `RNNLearner.classifier` is now `text_classifier_learner` and `RNN_Learner.language_model` is now `language_model_learner`.
+- `pil2tensor` is faster and works on more image types (thanks to kasparlund)
+- Imports in the file picker widget (thanks to Hiromi)
+- Batches of size 1 will be removed during training because of the issue with BatchNorm1d
+- Confusion matrix show ints if `normalize=False` (default)
+- `RNNLearner.get_preds` return the preds in the right order (thanks to StatisticDean)
+- `num_features_model` now works with any model
+- `resize_method` wasn't properly set when passed to `ImageDataBunch`
+- `reset` the RNNs at the beginning of each epoch in `RNNTrainer`
+
+## 1.0.19 (2018-11-03)
+
+### New:
+
+- add an argument `resize_method` that tells `apply_tfms` how to resize the image to the desired size (crop, pad, squish or no).
+- all the image dataset have an `image_opener` attribute (default `open_image`) that can be changed. The `SegmentationDataset` has a `mask_opener` attribute.
+- `add_test` and `add_test_folder` in data block API.
+
+### Changed:
+
+- jupyter et al no longer forced dependencies
+- `verify_images` can now resize images on top of checking they're not broken.
+- LR finder plot now uses python scientific notation instead of math superset notation
+
+### Fixed:
+
+- `ImageDataBunch.from_df` doesn't change the dataframe.
+
+## 1.0.18 (2018-10-30)
+
+### Fixed:
+
+- Fix jupyter dep version
+
+
+## 1.0.17 (2018-10-30)
+
+### New:
+
+- Add tiny datasets
+
+### Changed:
+
+- remove wrong `Fbeta`
+
+### Fixed:
+
+- fix implementation of `fbeta`
+
+## 1.0.16 (2018-10-30)
+
+### New:
+
+- `ImageDataBunch.single_from_classes` to allow single image predictions
+- `DatasetBase` has `set_item` and `clear_item` to force it to always return `item`
+- `DatasetBase` uses abstract `_get_x` and `_get_y`
+- `batch_size` property in DeviceDataLoader
+- `ClassificationLearner.predict` to get prediction on a single item
+- Monkey-patched torch.Tensor so matplotlib works
+- `Learner.create_unet`
+- Data block API
+
+### Changed:
+
+- `validate` now takes optional `n_batch`
+- `create_cnn` now returns a `ClassificationLearner`
+- `return_path` flag to `Learner.save`
+- `ImageDataBunch.show_batch()` now works for every type of dataset, removes `show_images` and `show_xy_images` as a result.
+- Monkey-patched torch.utils.data.dataloader.DataLoader to create a passthrough to the dataset
+- `max_workers` for `download_images`
+- Change the arguments of `ObjectDetectDataset` to make it consistent with the rest of the API, changes the return of `get_annotations` to go with it.
+
+### Fixed:
+
+- remove empty classes in `ImageDataBunch.from_folder`
 
 ## 1.0.15 (2018-10-28)
 
@@ -30,7 +249,7 @@ of that change.
 
 ### New:
 
-- `Learner` objects now determine from the loss function if there is something to add on top of the models to get the true predictions 
+- `Learner` objects now determine from the loss function if there is something to add on top of the models to get the true predictions
 
 ### Changed:
 
@@ -40,7 +259,7 @@ of that change.
 - `get_preds` now return the true probabilities
 - `TTA` averages the probabilities and not the last activations of the model
 - `ClassificationInterpretation` has been changed accordingly and the `sigmoid` argument has been deprecated
- 
+
 ### Fixed:
 
 - Make `pred_batch` faster and remove redundent `*`
@@ -71,7 +290,7 @@ of that change.
 
 ## 1.0.13 (2018-10-24)
 
-### New: 
+### New:
 
 - pretrained language model is now downloaded directly in the .fastai/models/ folder. Use `pretrained_model=URLs.WT103`
 - add an argument `stop_div` to `Learner.lr_find()` to prevent early stopping, useful for negative losses.
@@ -91,7 +310,7 @@ of that change.
 - Strip space from file name when CSV has spaces
 - Handle missing `loss_func` attr
 - Pass on the `use_bn` parameter in `get_tabular_learner`
-- Bad handling when final batch has size of 1 
+- Bad handling when final batch has size of 1
 - rolled back numpy dependency to >=1.12 (anaconda package has a upper pin on it) and to pip>=9.0.1, the old version are buggy but should be ok for fastai
 
 ## 1.0.11 (2018-10-20)
