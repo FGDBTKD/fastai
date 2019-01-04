@@ -52,13 +52,12 @@ def master2model(model_params:Sequence[Tensor], master_params:Sequence[Tensor], 
         for model_group,master_group in zip(model_params,master_params):
             for model, master in zip(model_group, master_group): model.data.copy_(master.data)
 
-@dataclass
-class MixedPrecision(Callback):
+class MixedPrecision(LearnerCallback):
     "Callback that handles mixed-precision training."
-    learn:Learner
-    loss_scale:float=512.
-    flat_master:bool=False
-    def __post_init__(self): assert torch.backends.cudnn.enabled, "Mixed precision training requires cudnn."
+    def __init__(self, learn:Learner, loss_scale:float=512., flat_master:bool=False):
+        super().__init__(learn)
+        self.loss_scale,self.flat_master = loss_scale,flat_master
+        assert torch.backends.cudnn.enabled, "Mixed precision training requires cudnn."
 
     def on_train_begin(self, **kwargs:Any)->None:
         "Ensure everything is in half precision mode."
@@ -76,12 +75,6 @@ class MixedPrecision(Callback):
         opt_params = [{'params': mp, 'lr': lr} for mp,lr in zip(self.master_params, lrs)]
         self.learn.opt.opt = self.learn.opt_func(opt_params)
         opt.mom,opt.wd,opt.beta = mom,wd,beta
-
-    def on_train_end(self, **kwargs:Any)->None:
-        "Remove half precision transforms added at `on_train_begin`."
-        self.learn.data.train_dl.remove_tfm(to_half)
-        if hasattr(self.learn.data, 'valid_dl') and self.learn.data.valid_dl is not None:
-            self.learn.data.valid_dl.remove_tfm(to_half)
 
     def on_loss_begin(self, last_output:Tensor, **kwargs:Any) -> Tensor:
         "Convert half precision output to FP32 to avoid reduction overflow."
